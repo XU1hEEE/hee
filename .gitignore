@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.streamlit/
+hee_bot.db
+.hee-data/
+build/
+dist/
+*.egg-info/
