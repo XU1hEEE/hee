@@ -13,6 +13,8 @@ class MemoryRecord:
     content: str
     source: str
     created_at: str
+    updated_at: str
+    memory_type: str  # semantic, episodic, temporal
     score: float = 0.0
 
 

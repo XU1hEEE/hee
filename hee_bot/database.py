@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 from hee_bot.models import MemoryRecord
 
@@ -55,10 +56,19 @@ class BotDatabase:
                     content TEXT NOT NULL,
                     source TEXT NOT NULL,
                     embedding_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    memory_type TEXT NOT NULL DEFAULT 'semantic',
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
                 """
             )
+            # Add columns if they don't exist (for existing databases)
+            cursor = connection.execute("PRAGMA table_info(memories)")
+            columns = [row["name"] for row in cursor.fetchall()]
+            if "memory_type" not in columns:
+                connection.execute("ALTER TABLE memories ADD COLUMN memory_type TEXT NOT NULL DEFAULT 'semantic'")
+            if "updated_at" not in columns:
+                connection.execute("ALTER TABLE memories ADD COLUMN updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP")
 
     def add_message(self, role: str, content: str) -> None:
         with self._connect() as connection:
@@ -90,22 +100,49 @@ class BotDatabase:
         content: str,
         source: str,
         embedding: list[float],
+        memory_type: str = "semantic",
     ) -> int:
         with self._connect() as connection:
             cursor = connection.execute(
                 """
-                INSERT INTO memories (category, content, source, embedding_json)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO memories (category, content, source, embedding_json, memory_type)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (category, content, source, json.dumps(embedding)),
+                (category, content, source, json.dumps(embedding), memory_type),
             )
             return int(cursor.lastrowid)
+
+    def update_memory(
+        self,
+        memory_id: int,
+        content: str | None = None,
+        category: str | None = None,
+        embedding: list[float] | None = None,
+    ) -> bool:
+        updates = ["updated_at = CURRENT_TIMESTAMP"]
+        params: list[Any] = []
+        if content is not None:
+            updates.append("content = ?")
+            params.append(content)
+        if category is not None:
+            updates.append("category = ?")
+            params.append(category)
+        if embedding is not None:
+            updates.append("embedding_json = ?")
+            params.append(json.dumps(embedding))
+        
+        params.append(memory_id)
+        query = f"UPDATE memories SET {', '.join(updates)} WHERE id = ?"
+        
+        with self._connect() as connection:
+            cursor = connection.execute(query, params)
+            return cursor.rowcount > 0
 
     def list_memories(self, limit: int = 50) -> list[MemoryRecord]:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT id, category, content, source, created_at
+                SELECT id, category, content, source, created_at, updated_at, memory_type
                 FROM memories
                 ORDER BY id DESC
                 LIMIT ?
@@ -120,6 +157,8 @@ class BotDatabase:
                 content=str(row["content"]),
                 source=str(row["source"]),
                 created_at=str(row["created_at"]),
+                updated_at=str(row["updated_at"]),
+                memory_type=str(row["memory_type"]),
             )
             for row in rows
         ]
@@ -136,7 +175,7 @@ class BotDatabase:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT id, category, content, source, embedding_json, created_at
+                SELECT id, category, content, source, embedding_json, memory_type, created_at, updated_at
                 FROM memories
                 ORDER BY id DESC
                 """
@@ -151,6 +190,8 @@ class BotDatabase:
                     "content": str(row["content"]),
                     "source": str(row["source"]),
                     "created_at": str(row["created_at"]),
+                    "updated_at": str(row["updated_at"]),
+                    "memory_type": str(row["memory_type"]),
                     "embedding": json.loads(str(row["embedding_json"])),
                 }
             )

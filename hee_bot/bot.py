@@ -11,6 +11,7 @@ from hee_bot.database import BotDatabase
 from hee_bot.models import AnalysisResult, MemoryRecord
 from hee_bot.ollama_client import OllamaClient, OllamaError
 from hee_bot.openai_client import OpenAIClient, OpenAIError
+from hee_bot.memory_manager import MemoryManager, MemoryOperation
 
 
 SYSTEM_PROMPT = """You are Hee, a private local-first emotional support companion for Marina.
@@ -54,6 +55,7 @@ class LocalCompanionBot:
             self.llm = OpenAIClient()
         else:
             self.llm = OllamaClient()
+        self.memory_manager = MemoryManager(self.llm)
 
     def handle_input(self, user_input: str) -> dict[str, Any]:
         normalized = user_input.strip()
@@ -62,7 +64,7 @@ class LocalCompanionBot:
 
         if normalized.startswith("/remember "):
             memory_text = normalized[len("/remember ") :].strip()
-            return self._remember(memory_text, source="explicit_command", category="explicit_preference")
+            return self._remember(memory_text, source="explicit_command", category="explicit_preference", memory_type="semantic")
 
         if normalized.startswith("/forget "):
             target = normalized[len("/forget ") :].strip()
@@ -78,17 +80,15 @@ class LocalCompanionBot:
         self.db.add_message("user", normalized)
         analysis = self._analyze_message(normalized)
         memories = self._retrieve_relevant_memories(normalized)
+        
+        # Continual Memory Architecture: Process and consolidate memories
+        memory_updates = []
+        if analysis.should_store and analysis.memory_candidate:
+            ops = self.memory_manager.plan_operations(analysis.memory_candidate, memories)
+            memory_updates = self._execute_memory_operations(ops, category=analysis.intent)
+
         reply = self._generate_reply(normalized, analysis, memories)
         self.db.add_message("assistant", reply)
-
-        stored_memory = None
-        if analysis.should_store and analysis.memory_candidate:
-            stored_memory = self._remember(
-                analysis.memory_candidate,
-                source="policy_auto",
-                category=analysis.intent,
-                persist_message=False,
-            )
 
         response: dict[str, Any] = {
             "reply": reply,
@@ -96,8 +96,8 @@ class LocalCompanionBot:
             "analysis": analysis,
             "memories": memories,
         }
-        if stored_memory:
-            response["memory_update"] = stored_memory["reply"]
+        if memory_updates:
+            response["memory_update"] = "\n".join(memory_updates)
         return response
 
     def _help_text(self) -> str:
@@ -114,6 +114,7 @@ class LocalCompanionBot:
         memory_text: str,
         source: str,
         category: str,
+        memory_type: str = "semantic",
         persist_message: bool = True,
     ) -> dict[str, str]:
         if not memory_text:
@@ -125,13 +126,67 @@ class LocalCompanionBot:
             content=memory_text,
             source=source,
             embedding=embedding,
+            memory_type=memory_type,
         )
+        msg = f"Stored {memory_type} memory #{memory_id}: {memory_text}"
         if persist_message:
-            self.db.add_message("assistant", f"Stored memory #{memory_id}: {memory_text}")
+            self.db.add_message("assistant", msg)
         return {
-            "reply": f"Stored memory #{memory_id}: {memory_text}",
+            "reply": msg,
             "command": "remember",
         }
+
+    def _execute_memory_operations(
+        self, 
+        ops: list[MemoryOperation], 
+        category: str
+    ) -> list[str]:
+        results = []
+        for op in ops:
+            if op.op == "ADD":
+                res = self._remember(
+                    op.content, 
+                    source="policy_auto", 
+                    category=category, 
+                    memory_type=op.memory_type,
+                    persist_message=False
+                )
+                results.append(res["reply"])
+            
+            elif op.op == "UPDATE" and op.target_id is not None:
+                embedding = self.llm.embed(op.content)
+                updated = self.db.update_memory(
+                    op.target_id, 
+                    content=op.content, 
+                    category=category, 
+                    embedding=embedding
+                )
+                if updated:
+                    results.append(f"Updated memory #{op.target_id}: {op.content}")
+            
+            elif op.op == "MERGE" and op.merge_ids:
+                # Add new merged memory
+                res = self._remember(
+                    op.content, 
+                    source="policy_consolidated", 
+                    category=category, 
+                    memory_type=op.memory_type,
+                    persist_message=False
+                )
+                # Delete old ones
+                for mid in op.merge_ids:
+                    self.db.delete_memory(mid)
+                results.append(f"Merged memories {op.merge_ids} into new memory #{res['reply'].split('#')[1].split(':')[0]}")
+            
+            elif op.op == "FORGET" and op.target_id is not None:
+                deleted = self.db.delete_memory(op.target_id)
+                if deleted:
+                    results.append(f"Forgot outdated memory #{op.target_id}")
+            
+            elif op.op == "KEEP":
+                continue
+                
+        return results
 
     def _forget(self, target: str) -> dict[str, str]:
         if not target:
@@ -239,7 +294,7 @@ class LocalCompanionBot:
         if not memories:
             return "No relevant memories."
         return "\n".join(
-            f"- ({memory.category}, score={memory.score:.2f}) {memory.content}"
+            f"- [{memory.memory_type}] ({memory.category}, score={memory.score:.2f}) {memory.content}"
             for memory in memories
         )
 
