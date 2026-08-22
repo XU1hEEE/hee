@@ -12,23 +12,51 @@ st.set_page_config(page_title="Hee", page_icon=":speech_balloon:", layout="wide"
 
 
 @st.cache_resource
-def get_bot() -> LocalCompanionBot:
-    return LocalCompanionBot()
+def get_bot(provider: str) -> LocalCompanionBot:
+    return LocalCompanionBot(provider=provider)
 
 
 def init_session_state() -> None:
     if "messages" not in st.session_state:
         st.session_state.messages = []
+    if "provider" not in st.session_state:
+        st.session_state.provider = "ollama"
 
 
-def render_sidebar() -> None:
+def render_sidebar() -> str:
     st.sidebar.title("Hee")
-    st.sidebar.caption("Local-first companion bot")
+    st.sidebar.caption("Privacy-first companion bot")
+
+    provider = st.sidebar.radio(
+        "Connectivity Mode",
+        options=["ollama", "openai"],
+        format_func=lambda x: "Offline (Ollama)" if x == "ollama" else "Online (OpenAI)",
+        index=0 if st.session_state.provider == "ollama" else 1,
+    )
+
+    if provider != st.session_state.provider:
+        st.session_state.provider = provider
+        st.cache_resource.clear()
+        st.rerun()
+
+    model_info = []
+    if provider == "ollama":
+        model_info = [
+            f"- Chat model: `{SETTINGS.chat_model}`",
+            f"- Embeddings: `{SETTINGS.embedding_model}`",
+        ]
+    else:
+        if not SETTINGS.openai_api_key:
+            st.sidebar.warning("OpenAI API key is missing. Check your environment variables.")
+        model_info = [
+            f"- Chat model: `{SETTINGS.openai_chat_model}`",
+            f"- Embeddings: `{SETTINGS.openai_embedding_model}`",
+        ]
+
     st.sidebar.markdown(
         "\n".join(
-            [
-                f"- Chat model: `{SETTINGS.chat_model}`",
-                f"- Embeddings: `{SETTINGS.embedding_model}`",
+            model_info
+            + [
                 f"- SQLite: `{SETTINGS.sqlite_path}`",
                 "- Commands: `/remember`, `/forget`, `/memory`, `/help`",
             ]
@@ -38,6 +66,7 @@ def render_sidebar() -> None:
         "Memory policy: store preferences, important events, recurring goals, "
         "and only sensitive details you explicitly choose to remember."
     )
+    return provider
 
 
 def render_chat_history() -> None:
@@ -50,13 +79,13 @@ def render_chat_history() -> None:
 
 def main() -> None:
     init_session_state()
-    bot = get_bot()
+    provider = render_sidebar()
+    bot = get_bot(provider)
 
     st.title("Hee")
     st.write(
-        "A private, local-first support bot powered by Ollama, Qwen, SQLite, and Streamlit."
+        "A private, supportive companion powered by Ollama, OpenAI, SQLite, and Streamlit."
     )
-    render_sidebar()
     render_chat_history()
 
     prompt = st.chat_input("Talk to Hee or use /remember, /forget, /memory")
@@ -68,7 +97,8 @@ def main() -> None:
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("Thinking locally..."):
+        thinking_text = "Thinking locally..." if provider == "ollama" else "Thinking online..."
+        with st.spinner(thinking_text):
             result = bot.handle_input(prompt)
         st.markdown(result["reply"])
         caption_parts: list[str] = []

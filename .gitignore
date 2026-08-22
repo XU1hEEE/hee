@@ -7,3 +7,4 @@ hee_bot.db
 build/
 dist/
 *.egg-info/
+.env

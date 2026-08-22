@@ -6,6 +6,9 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 def _default_data_dir() -> Path:
@@ -36,6 +39,13 @@ class Settings:
     ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
     chat_model: str = os.getenv("OLLAMA_CHAT_MODEL", "qwen2.5:7b")
     embedding_model: str = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
+    
+    # OpenAI settings
+    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    openai_base_url: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    openai_chat_model: str = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o")
+    openai_embedding_model: str = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+
     sqlite_path: Path = _default_sqlite_path()
     max_history_messages: int = int(os.getenv("HEE_MAX_HISTORY_MESSAGES", "12"))
     max_memories: int = int(os.getenv("HEE_MAX_MEMORIES", "4"))

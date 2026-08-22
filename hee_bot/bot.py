@@ -10,6 +10,7 @@ from hee_bot.config import SETTINGS
 from hee_bot.database import BotDatabase
 from hee_bot.models import AnalysisResult, MemoryRecord
 from hee_bot.ollama_client import OllamaClient, OllamaError
+from hee_bot.openai_client import OpenAIClient, OpenAIError
 
 
 SYSTEM_PROMPT = """You are Hee, a private local-first emotional support companion for Marina.
@@ -46,9 +47,13 @@ Avoid storing transient moods, highly sensitive details, or everyday filler.
 
 
 class LocalCompanionBot:
-    def __init__(self) -> None:
+    def __init__(self, provider: str = "ollama") -> None:
         self.db = BotDatabase(SETTINGS.sqlite_path)
-        self.ollama = OllamaClient()
+        self.provider = provider
+        if provider == "openai":
+            self.llm = OpenAIClient()
+        else:
+            self.llm = OllamaClient()
 
     def handle_input(self, user_input: str) -> dict[str, Any]:
         normalized = user_input.strip()
@@ -114,7 +119,7 @@ class LocalCompanionBot:
         if not memory_text:
             return {"reply": "There is nothing to remember yet.", "command": "remember"}
 
-        embedding = self.ollama.embed(memory_text)
+        embedding = self.llm.embed(memory_text)
         memory_id = self.db.add_memory(
             category=category,
             content=memory_text,
@@ -162,10 +167,10 @@ class LocalCompanionBot:
             {"role": "user", "content": user_input},
         ]
         try:
-            raw = self.ollama.chat(messages, temperature=0.1)
+            raw = self.llm.chat(messages, temperature=0.1)
             payload = self._extract_json(raw)
             return AnalysisResult.from_payload(payload)
-        except (OllamaError, ValueError, json.JSONDecodeError):
+        except (OllamaError, OpenAIError, ValueError, json.JSONDecodeError):
             return self._fallback_analysis(user_input)
 
     def _generate_reply(
@@ -196,18 +201,20 @@ class LocalCompanionBot:
         )
         messages.append({"role": "user", "content": user_input})
         try:
-            return self.ollama.chat(messages, temperature=0.5)
-        except OllamaError as exc:
+            return self.llm.chat(messages, temperature=0.5)
+        except (OllamaError, OpenAIError) as exc:
+            provider_name = "OpenAI" if self.provider == "openai" else "Ollama"
+            model_name = SETTINGS.openai_chat_model if self.provider == "openai" else SETTINGS.chat_model
             return (
-                "I couldn't reach Ollama just now. "
-                f"Check that it is running and that model '{SETTINGS.chat_model}' is installed. "
+                f"I couldn't reach {provider_name} just now. "
+                f"Check your settings and that model '{model_name}' is available. "
                 f"Details: {exc}"
             )
 
     def _retrieve_relevant_memories(self, user_input: str) -> list[MemoryRecord]:
         try:
-            query_embedding = self.ollama.embed(user_input)
-        except OllamaError:
+            query_embedding = self.llm.embed(user_input)
+        except (OllamaError, OpenAIError):
             return []
 
         scored: list[MemoryRecord] = []
