@@ -3,8 +3,16 @@ __pycache__/
 *.pyc
 .streamlit/
 hee_bot.db
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
 .hee-data/
 build/
 dist/
 *.egg-info/
 .env
+.env.*
+!.env.example

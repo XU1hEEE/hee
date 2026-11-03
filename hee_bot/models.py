@@ -1,37 +1,39 @@
-"""Data models used across the local bot."""
+"""Core data models for Hee."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Optional
 
 
 @dataclass
 class MemoryRecord:
+    """Represents a single memory unit."""
     id: int
-    category: str
+    memory_type: str
     content: str
-    source: str
-    created_at: str
-    updated_at: str
-    memory_type: str  # semantic, episodic, temporal
-    score: float = 0.0
+    source_message: Optional[str] = None
+    last_updated_at: Optional[str] = None
 
 
 @dataclass
-class AnalysisResult:
-    emotion: str
-    intent: str
-    should_store: bool
-    memory_candidate: str
-    reasoning: str
+class EnrichedMemoryRecord:
+    """A memory record with additional context, like its history."""
+    id: int
+    memory_type: str
+    content: str
+    space_id: int
+    space_name: str
+    created_at: str
+    source_message: Optional[str] = None
+    last_updated_at: Optional[str] = None
+    history: Optional[str] = None
 
-    @classmethod
-    def from_payload(cls, payload: dict[str, Any]) -> "AnalysisResult":
-        return cls(
-            emotion=str(payload.get("emotion", "unknown")).strip() or "unknown",
-            intent=str(payload.get("intent", "general_support")).strip() or "general_support",
-            should_store=bool(payload.get("should_store", False)),
-            memory_candidate=str(payload.get("memory_candidate", "")).strip(),
-            reasoning=str(payload.get("reasoning", "")).strip(),
-        )
+
+@dataclass
+class MemorySpace:
+    """Represents a container for memories."""
+    id: int
+    name: str
+    description: str
+    created_at: str

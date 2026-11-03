@@ -1,37 +1,43 @@
 from __future__ import annotations
 
-import sqlite3
+import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-from hee_bot.database import BotDatabase
-
-
-class BotDatabaseTests(unittest.TestCase):
-    def test_uses_workspace_fallback_when_default_directory_is_blocked(self) -> None:
-        connection = MagicMock()
-        sqlite_context = MagicMock()
-        sqlite_context.__enter__.return_value = connection
-        sqlite_context.__exit__.return_value = False
-
-        restricted_parent = Path("/restricted")
-        real_mkdir = Path.mkdir
-
-        def fake_mkdir(path_obj: Path, *args: object, **kwargs: object) -> None:
-            if path_obj == restricted_parent:
-                raise PermissionError("blocked")
-            return real_mkdir(path_obj, *args, **kwargs)
-
-        with patch("sqlite3.connect", return_value=sqlite_context), patch(
-            "pathlib.Path.mkdir",
-            autospec=True,
-            side_effect=fake_mkdir,
-        ):
-            database = BotDatabase(restricted_parent / "hee_bot.db")
-
-        self.assertEqual(database.db_path, Path.cwd() / ".hee-data" / "hee_bot.db")
+from hee_bot.database import Database
+from hee_bot.models import MemoryRecord
 
 
-if __name__ == "__main__":
-    unittest.main()
+class DatabaseTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.directory = tempfile.TemporaryDirectory()
+        self.path = str(Path(self.directory.name) / "memories.db")
+        self.db = Database(self.path)
+        self.db.initialize()
+
+    def tearDown(self) -> None:
+        self.db.close()
+        self.directory.cleanup()
+
+    def test_memories_stay_in_their_space_and_survive_reopening(self) -> None:
+        space = self.db.add_memory_space("Work", "Work context")
+        self.db.add_memory(space, MemoryRecord(id=0, memory_type="semantic", content="Use Python", source_message="I prefer Python"))
+        self.assertEqual(self.db.find_memories(1, ""), [])
+        self.db.close()
+        self.db = Database(self.path)
+        memory = self.db.get_enriched_memories(space)[0]
+        self.assertEqual(memory.content, "Use Python")
+        self.assertEqual(memory.source_message, "I prefer Python")
+        self.assertIn("CREATE", memory.history)
+
+    def test_updates_and_deletions_keep_audit_history(self) -> None:
+        memory_id = self.db.add_memory(1, MemoryRecord(id=0, memory_type="semantic", content="Tea"))
+        self.db.update_memory(memory_id, "Coffee")
+        self.assertEqual(self.db.find_memories(1, "")[0].content, "Coffee")
+        self.db.delete_memory(memory_id)
+        self.assertEqual(self.db.find_memories(1, ""), [])
+        with self.db.cursor() as cursor:
+            cursor.execute("SELECT operation, old_content FROM memory_history WHERE memory_id = ? ORDER BY id", (memory_id,))
+            history = cursor.fetchall()
+        self.assertEqual([row["operation"] for row in history], ["CREATE", "UPDATE", "DELETE"])
+        self.assertEqual(history[-1]["old_content"], "Coffee")

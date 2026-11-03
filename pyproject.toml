@@ -1,26 +1,20 @@
-[build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
-
-[project]
+[tool.poetry]
 name = "hee"
 version = "0.1.0"
-description = "Local-first companion bot for supportive conversations."
+description = "A local-first AI companion."
+authors = ["Hee contributors"]
 readme = "README.md"
-requires-python = ">=3.9"
-license = { text = "Proprietary" }
-dependencies = [
-    "requests>=2.32.3",
-    "streamlit>=1.37.0",
-]
-keywords = ["local-first", "ollama", "sqlite", "streamlit", "chatbot"]
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.9",
-    "License :: Other/Proprietary License",
-    "Operating System :: OS Independent",
-]
+license = "Proprietary"
+packages = [{ include = "hee_bot" }]
 
-[tool.setuptools.packages.find]
-include = ["hee_bot"]
+[tool.poetry.dependencies]
+python = "^3.9"
+streamlit = "^1.33.0"
+requests = "^2.31.0"
+
+[tool.poetry.dev-dependencies]
+pytest = "^7.0.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

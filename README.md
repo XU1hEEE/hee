@@ -1,141 +1,130 @@
 # Hee
 
-Hee is a private, local-first companion bot for supportive conversations, now supporting hybrid local/cloud orchestration.
+**A local-first AI companion with memory you can inspect and export.**
 
-It runs on your computer with:
+Hee explores how an AI companion can carry useful context between conversations while keeping saved memories on your computer. It combines a Streamlit chat interface, local inference through Ollama, and a SQLite memory store organized into spaces.
 
-- `Streamlit` for the UI
-- `Python` for orchestration
-- `Ollama` for local chat and embeddings
-- `OpenAI GPT API` for cloud-based chat and embeddings
-- `SQLite` for local memory storage
-- `Continual Memory Architecture` for dynamic user state modeling
+The goal is simple: spend less time repeating your background, understand what the assistant remembers, and take that context with you.
 
-## Architecture
-
-```text
-Browser (Streamlit)
-        |
-        v
-Python bot orchestration
-  - conversation handling
-  - emotion / intent analysis
-  - memory management (ADD, UPDATE, MERGE, KEEP, FORGET)
-        |
-   +----+-------------------+
-   |         |              |
-   v         v              v
-Ollama     OpenAI         SQLite
-Qwen       GPT-4o         messages + memories
-```
+> **Status:** Early prototype for local use. Core memory workflows have automated tests. Semantic retrieval and automatic memory consolidation are still planned.
 
 ## Features
 
-- **Hybrid Chat Modes**:
-  - Local chat with `qwen2.5:7b` via Ollama.
-  - Cloud chat with `gpt-4o` via OpenAI API.
-- **Continual Memory Architecture**:
-  - Models user information as evolving **Semantic**, **Episodic**, and **Temporal** states.
-  - Uses a lightweight memory-management logic to perform **ADD**, **UPDATE**, **MERGE**, **KEEP**, and **FORGET** operations.
-  - Resolves conflicts between new observations and existing memories.
-- **Explicit Memory Controls**:
-  - `/remember I prefer being comforted before advice`
-  - `/forget 3`
-  - `/memory`
-- **Memory Policy**:
-  - Prefers long-term preferences, important life events, and recurring goals.
-  - Memory retrieval based on semantic similarity using local or cloud embeddings.
+| Capability | Current implementation |
+| --- | --- |
+| Local AI chat | Uses the `mistral` model through Ollama on your computer. |
+| Memory spaces | Stores memories under separate spaces and uses the selected space as chat context. |
+| Memory dashboard | Displays saved content, source messages, and recorded change history; includes a delete action. |
+| Explicit memory commands | Save a memory with `/remember <text>` or remove active memories in the selected space with `/clear`. |
+| Portable context | Exports a space's memories as JSON or Markdown for inspection or manual reuse in another tool. |
+| Local persistence | Stores memory spaces, memories, and memory history in SQLite. |
 
-## Setup
+## Run locally
 
-1. Create and activate a virtual environment:
+### Prerequisites
+
+- Python 3.9 or newer.
+- [Ollama](https://ollama.com/) installed and running.
+- Enough memory and disk space to run the `mistral` model.
+
+### Installation
 
 ```bash
+git clone https://github.com/XU1hEEE/hee.git
+cd hee
 python3 -m venv .venv
 source .venv/bin/activate
+python -m pip install -r requirements.txt
 ```
 
-2. Install Python dependencies:
+On Windows, activate the environment with `.venv\Scripts\Activate.ps1` in PowerShell.
+
+Download the model:
 
 ```bash
-pip install -r requirements.txt
+ollama pull mistral
 ```
 
-3. (Optional) Start Ollama and pull the local models:
+Start Ollama through its desktop app or run `ollama serve` in a separate terminal if it is not already running. Then start Hee:
 
 ```bash
-ollama pull qwen2.5:7b
-ollama pull nomic-embed-text
-ollama serve
+python -m streamlit run app.py
 ```
 
-4. (Optional) Configure OpenAI API in your `.env` file:
-```bash
-OPENAI_API_KEY=your_key_here
-```
-
-5. Run the app:
+Open the local URL printed by Streamlit, usually `http://localhost:8501`. If that port is already in use, choose another:
 
 ```bash
-streamlit run app.py
+python -m streamlit run app.py --server.port 8511
 ```
 
-## Data Storage
+The current client defaults to `http://localhost:11434` and requests the `mistral` model. These settings live in [`hee_bot/ollama_client.py`](hee_bot/ollama_client.py). No cloud API key is required by the current application.
 
-- By default, Hee stores its SQLite database outside the project directory.
-- macOS default: `~/Library/Application Support/Hee/hee_bot.db`
-- Linux default: `~/.local/share/Hee/hee_bot.db`
-- Windows default: `%APPDATA%\Hee\hee_bot.db`
-- In restricted environments that cannot write outside the workspace, Hee falls back to `.hee-data/hee_bot.db`.
+## How memory works
 
-## Environment Variables
+```text
+Streamlit interface
+        |
+        v
+Python companion bot
+        |
+        +-- SQLite: spaces, memories, sources, change history
+        |
+        +-- Ollama: local chat with mistral
+```
 
-Optional configuration:
+For a regular chat request, the bot loads all memories in the selected space and includes their content in the model's prompt. After a successful reply, it attempts to save the user's message as an episodic memory. `/remember` attempts to save an explicit semantic memory instead.
+
+The database records memory creation, updates, and deletion. The dashboard displays history for memories that still exist. Markdown exports contain memory content and types; JSON exports also include the metadata displayed by the dashboard.
+
+## Storage and privacy
+
+- The current application creates `hee_database.db` in the repository root. Its path is defined in [`hee_bot/config.py`](hee_bot/config.py).
+- To use another database location, set `HEE_SQLITE_PATH` to a file path before starting the app. The parent directory must already exist. Database files and `.env` files are excluded from Git by default.
+- Saved memories and their sources persist in SQLite. The visible chat transcript is held in Streamlit session state and is not persisted as a separate conversation log.
+- Deleting a memory removes it from the active memory list, but its old content remains in the database's history table. `/clear` also retains deletion history.
+- The app shares one database across visitors and has no login or per-user access controls. Its memory spaces separate topics, not user permissions.
+- Local inference uses the configured Ollama endpoint.
+
+## Known limitations
+
+- **Retrieval:** Memory lookup currently returns all memories in a space. It does not rank them by relevance or use embeddings.
+- **Conversation continuity:** Visible chat transcripts are separated by space within a browser session. The bot sends saved memories and the latest message to Ollama, but does not include the visible chat transcript.
+- **Memory planning:** `memory_manager.py` contains logic for planning ADD, UPDATE, MERGE, KEEP, and FORGET operations, but the current chat flow does not execute those plans.
+- **Backend availability:** Chat requires Ollama and `mistral`. If the model is unavailable, the app displays setup guidance; manual memory commands remain available.
+
+## Validation
+
+Run the automated tests from the repository root:
 
 ```bash
-# Ollama Settings
-export OLLAMA_BASE_URL=http://127.0.0.1:11434
-export OLLAMA_CHAT_MODEL=qwen2.5:7b
-export OLLAMA_EMBED_MODEL=nomic-embed-text
-
-# OpenAI Settings
-export OPENAI_API_KEY=your_api_key
-export OPENAI_CHAT_MODEL=gpt-4o
-export OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-
-# Storage & Policy Settings
-export HEE_DATA_DIR="$HOME/Library/Application Support/Hee"
-export HEE_SQLITE_PATH="$HEE_DATA_DIR/hee_bot.db"
-export HEE_MAX_HISTORY_MESSAGES=12
-export HEE_MAX_MEMORIES=4
-export HEE_MEMORY_SCORE_THRESHOLD=0.35
+python -m unittest discover -s tests -v
 ```
 
-## Memory Policy
+The tests cover database persistence and space separation, memory commands, chat memory saving, configuration, and model error handling. Model responses are mocked, so these tests do not require Ollama or download model weights.
 
-Hee implements a **Continual Memory Architecture** to ensure your personal assistant grows with you.
+## Roadmap
 
-### Operations
-- **ADD**: Captures new, durable information.
-- **UPDATE**: Refines existing memories with new context.
-- **MERGE**: Consolidates related memory fragments into cohesive concepts.
-- **FORGET**: Removes outdated or conflicting information.
+- Add memory editing and clearer controls for retained history.
+- Include recent conversation context in replies.
+- Add semantic retrieval and integrate memory update and consolidation plans.
+- Support document and conversation imports with source previews.
+- Make exported context easier to reuse across AI assistants.
 
-### Memory Types
-- **Semantic**: General facts and stable preferences.
-- **Episodic**: Specific life events and experiences.
-- **Temporal**: Time-based patterns and evolving habits.
+## Project structure
 
-## Notes
+```text
+app.py                      Streamlit chat, spaces, dashboard, and exports
+hee_bot/
+  bot.py                    Chat orchestration and command handling
+  config.py                 SQLite database path
+  database.py               Memory storage and change history
+  memory_manager.py         Memory-operation planning logic
+  models.py                 Memory and space data models
+tests/                      Configuration, storage, bot, and client tests
+requirements.txt            Runtime dependencies
+pyproject.toml              Project metadata
+```
 
-- All memory stays in the local SQLite database you configure.
-- If Ollama is not reachable, Hee falls back safely and returns an actionable error message instead of crashing.
-- The app uses Ollama's local embedding API for semantic memory search.
+## License
 
-## Release Notes
-
-| Version | Date | Feature Update | Description |
-| :--- | :--- | :--- | :--- |
-| **v1.2.0** | 2026-08-22 | **Continual Memory Architecture** | Implemented evolving state modeling (Semantic, Episodic, Temporal) with dynamic operations (ADD, UPDATE, MERGE, FORGET) for conflict resolution. |
-| **v1.1.0** | 2026-08-21 | **Hybrid GPT-4o Support** | Integrated OpenAI API for cloud-based chat and embeddings, allowing seamless switching between local Ollama and cloud GPT models. |
-| **v1.0.0** | 2026-08-20 | **Initial Release** | Core local-first companion bot with Ollama (Qwen) support, SQLite storage, and basic semantic memory retrieval. |
+Copyright 2026 Hee contributors. All rights reserved; use and redistribution require prior written permission. See [LICENSE](LICENSE).

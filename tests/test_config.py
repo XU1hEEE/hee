@@ -6,28 +6,19 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from hee_bot import config
+
 
 class ConfigTests(unittest.TestCase):
-    def test_default_sqlite_path_uses_explicit_override(self) -> None:
-        with patch.dict(
-            os.environ,
-            {"HEE_SQLITE_PATH": "~/custom/hee.sqlite"},
-            clear=False,
-        ):
-            config = importlib.import_module("hee_bot.config")
+    def tearDown(self) -> None:
+        importlib.reload(config)
+
+    def test_default_database_is_in_project_root(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
             importlib.reload(config)
-            self.assertEqual(config._default_sqlite_path(), Path("~/custom/hee.sqlite").expanduser())
+            self.assertEqual(Path(config.DATABASE_PATH), Path(config.ROOT_DIR) / "hee_database.db")
 
-    def test_default_data_dir_prefers_configured_data_dir(self) -> None:
-        with patch.dict(
-            os.environ,
-            {"HEE_DATA_DIR": "~/hee-data"},
-            clear=False,
-        ):
-            config = importlib.import_module("hee_bot.config")
+    def test_database_override_expands_home_directory(self) -> None:
+        with patch.dict(os.environ, {"HEE_SQLITE_PATH": "~/custom/hee.sqlite"}):
             importlib.reload(config)
-            self.assertEqual(config._default_data_dir(), Path("~/hee-data").expanduser())
-
-
-if __name__ == "__main__":
-    unittest.main()
+            self.assertEqual(Path(config.DATABASE_PATH), Path("~/custom/hee.sqlite").expanduser())
