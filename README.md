@@ -6,6 +6,8 @@ Hee explores how an AI companion can carry useful context between conversations 
 
 The goal is simple: spend less time repeating your background, understand what the assistant remembers, and take that context with you.
 
+![Hee Project Overview](hee-overview.png)
+
 > **Status:** Early prototype for local use. Core memory workflows have automated tests. Semantic retrieval and automatic memory consolidation are still planned.
 
 ## Features
@@ -20,6 +22,15 @@ The goal is simple: spend less time repeating your background, understand what t
 | Local persistence | Stores memory spaces, memories, and memory history in SQLite. |
 
 ## Run locally
+
+### LLM Provider
+
+By default, Hee uses a local Ollama instance for chat. You can also configure it to use the OpenAI API.
+
+- **Ollama (default):** Runs locally. No API key is required.
+- **OpenAI:** Uses the OpenAI API. You will need to provide an API key.
+
+You can select the provider in the application's sidebar.
 
 ### Prerequisites
 

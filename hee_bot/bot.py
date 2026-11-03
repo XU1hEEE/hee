@@ -7,16 +7,20 @@ from typing import Any, Dict
 from hee_bot.database import Database
 from hee_bot.memory_manager import MemoryManager
 from hee_bot.ollama_client import OllamaClient
-from hee_bot.config import DATABASE_PATH
+from hee_bot.config import DATABASE_PATH, LLM_PROVIDER, OPENAI_API_KEY
 from hee_bot.models import MemoryRecord
-from hee_bot.ollama_client import OllamaError
+from hee_bot.ollama_client import OllamaClient, OllamaError
+from hee_bot.openai_client import OpenAIClient
 
 
 class LocalCompanionBot:
-    def __init__(self, db_path: str = DATABASE_PATH) -> None:
+    def __init__(self, db_path: str = DATABASE_PATH, llm_provider: str = LLM_PROVIDER, openai_api_key: str | None = OPENAI_API_KEY) -> None:
         self.db = Database(db_path)
         self.db.initialize()
-        self.llm_client = OllamaClient()
+        if llm_provider == "openai":
+            self.llm_client = OpenAIClient(openai_api_key)
+        else:
+            self.llm_client = OllamaClient()
         self.memory_manager = MemoryManager(self.llm_client)
 
     def handle_input(self, user_input: str, space_id: int) -> Dict[str, Any]:

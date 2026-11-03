@@ -11,3 +11,6 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATABASE_PATH = os.path.abspath(os.path.expanduser(
     os.environ.get("HEE_SQLITE_PATH", os.path.join(ROOT_DIR, "hee_database.db"))
 ))
+
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "ollama")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")

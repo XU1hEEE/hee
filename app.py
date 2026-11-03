@@ -17,6 +17,9 @@ st.set_page_config(page_title="Hee", page_icon=":speech_balloon:", layout="wide"
 @st.cache_resource
 def get_bot() -> LocalCompanionBot:
     """Get a cached instance of the bot."""
+    provider = st.session_state.get("llm_provider", "ollama")
+    if provider == "openai":
+        return LocalCompanionBot(llm_provider="openai", openai_api_key=st.session_state.get("openai_api_key"))
     return LocalCompanionBot()
 
 
@@ -39,6 +42,11 @@ def render_sidebar() -> None:
     """Render the sidebar with memory spaces and controls."""
     st.sidebar.title("Hee")
     st.sidebar.caption("Your local-first AI companion")
+
+    st.sidebar.header("LLM Provider")
+    provider = st.sidebar.radio("Provider", ["Ollama", "OpenAI"], key="llm_provider")
+    if provider == "OpenAI":
+        api_key = st.sidebar.text_input("OpenAI API Key", type="password", key="openai_api_key")
 
     db = get_db()
     spaces = db.get_memory_spaces()
